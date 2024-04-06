@@ -1,3 +1,15 @@
+https://docs.python.org/3/tutorial/modules.html#packages
+https://docs.sqlalchemy.org/en/20/tutorial/orm_related_objects.html#tutorial-orm-related-objects
+https://docs.sqlalchemy.org/en/20/dialects/sqlite.html#sqlalchemy.dialects.sqlite.DATETIME
+https://sqldocs.org/sqlite/sqlachemy-sqlite/
+https://stackoverflow.com/questions/2128505/difference-between-filter-and-filter-by-in-sqlalchemy
+https://stackoverflow.com/questions/20744277/sqlalchemy-create-all-does-not-create-tables
+https://flask.palletsprojects.com/en/2.3.x/appcontext/
+https://docs.sqlalchemy.org/en/20/core/engines.html#engine-configuration
+https://flask.palletsprojects.com/en/2.2.x/tutorial/database/
+https://realpython.com/flask-database/
+
+
 project flow
 
 1. schema
@@ -119,7 +131,7 @@ class User(Base):
     nickname = Column(String)
     
     def __repr__(self):
-        return f"<User(name={self.name}, fullname={self.fullname}>"
+        return f"<User(name={self.name}, fullname={self.fullname})>"
         
 Base.metadata.create_all(bind=engine)
 
@@ -162,6 +174,25 @@ class UserPicture(Base, Image):
     user_id = Column(Integer, ForeignKey('user.id'), primary_key=True)
     user = relationship('User')
     __tablename__ = 'user_picture'
+
+
+from sqlalchemy.dialects.sqlite import (
+    BLOB,
+    BOOLEAN,
+    CHAR,
+    DATE,
+    DATETIME,
+    DECIMAL,
+    FLOAT,
+    INTEGER,
+    NUMERIC,
+    JSON,
+    SMALLINT,
+    TEXT,
+    TIME,
+    TIMESTAMP,
+    VARCHAR,
+)
 
 3. auth.py (auths)
 
