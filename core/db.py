@@ -25,26 +25,26 @@ with engine.begin() as conn:
 from sqlalchemy import create_engine
 from sqlalchemy.orm import  sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
-from flask import g, current_app
+from flask import Flask, g, current_app
 from flask_sqlalchemy import SQLAlchemy
 
 
-db = None
+# db = None
 
 
-def get_db():
-    """
-    Adding db to global context, so db stays same in every
-    module
-    """
-    global db
-    if not db:
-        db = SQLAlchemy(current_app)
-    return db
+# def get_db():
+#     """
+#     Adding db to global context, so db stays same in every
+#     module
+#     """
+#     global db
+#     if not db:
+#         db = SQLAlchemy(current_app)
+#     return db
 
 
-engine = create_engine("sqlite:///:memory:", echo=True)
-Base = declarative_base()
+# Base = declarative_base()
+# engine = create_engine("sqlite:///:memory:", echo=True)
 
 
 # database methods
@@ -67,6 +67,31 @@ Base = declarative_base()
 #     session.add(new_message)
 #     session.commit()
 
-Base.metadata.create_all(bind=engine)
-Session = sessionmaker(bind=engine)
-session = Session()
+# Base.metadata.create_all(engine)
+# Session = sessionmaker(engine)
+# session = Session()
+
+
+
+
+# user table not found, we need an initial database ?, possible solution -> absolute path instead of in-memory sqlite
+
+    
+
+
+from models import User
+
+def init_database():
+    """
+    database initializer method
+    """
+    
+    db.create_all()
+    user = User(username="mario", password="password", email="example@example.com")
+    db.session.add(user)
+    db.session.commit()
+    print("database initialized")
+
+
+with app.app_context():
+    init_database()

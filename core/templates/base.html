@@ -4,6 +4,11 @@
 <nav>
   <h1>chat rooms</h1>
   <ul>
+    <!-- {% if current_user.is_anonymous %}
+    <a href="{{ url_for('login') }}">Login</a>
+    {% else %}
+    <a href="{{ url_for('logout') }}">Logout</a>
+    {% endif %} -->
     {% if g.user %}
       <li><span>{{ g.user['username'] }}</span>
       <li><a href="{{ url_for('logout') }}">Log Out</a>
