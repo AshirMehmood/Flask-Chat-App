@@ -111,7 +111,7 @@ class Message(db.Model):
 
 with app.app_context():
     db.create_all()
-    user = User(username="daisy", password="password", email="example@example.com")
+    user = User(username="daisy m", password="password", email="example@example.com")
     db.session.add(user)
     db.session.commit()
     print("database initialized")

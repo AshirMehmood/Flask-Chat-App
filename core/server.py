@@ -23,7 +23,7 @@ import models as orm
 from models import app, db
 import sqlalchemy as s
 from urllib.parse import urlsplit
-from forms import LoginForm
+from forms import LoginForm, RegistrationForm
 
 
 
@@ -115,28 +115,41 @@ def dashboard():
 
 @app.route("/register", methods=["GET", "POST"])
 def user_register():
+    form = RegistrationForm() # class's instance is mapped to form page' data now
+    if current_user.is_authenticated:
+        return redirect(url_for("home"))
     if request.method == "GET":
-        return render_template("register.html")
-    elif request.method == "POST":
-        username = request.form["username"]
-        user_name = db.session.query(orm.User).filter((orm.User.username==username))
-        flash(user_name)
-        if user_name:
-            flash("username already taken !")
-            return redirect(url_for("user_register"))
-        else:
-            pass_word = request.form["password"]
-            # password checks
+        flash("Entered in the GET request")
+        return render_template("register.html", form=form)
+    if request.method == "POST":
+        flash("Entered in the POST request")
+        if form.validate_on_submit():
+            new_user = orm.User(username=form.username.data,
+                                password=form.password.data, email=form.email.data)
+            db.session.add(new_user)
+            db.session.commit()
+            return redirect(url_for("login"))
+    return render_template("register.html", form=form)
+
+        # username = request.form["username"]
+        # user_name = db.session.query(orm.User).filter((orm.User.username==username))
+        # flash(user_name)
+        # if user_name:
+        #     flash("username already taken !")
+        #     return redirect(url_for("user_register"))
+        # else:
+        #     pass_word = request.form["password"]
+        #     # password checks
             
-            email = request.form["email"]
-            new_user = orm.User(username=username, password=pass_word, email=email)
-            try:
-                db.session.add(new_user)
-                db.session.commit()
-            except ConnectionAbortedError:
-                flash("Unable to register")
-                return redirect(url_for("user_register"))
-            return redirect(url_for("login"))        
+        #     email = request.form["email"]
+        #     new_user = orm.User(username=username, password=pass_word, email=email)
+        #     try:
+        #         db.session.add(new_user)
+        #         db.session.commit()
+        #     except ConnectionAbortedError:
+        #         flash("Unable to register")
+        #         return redirect(url_for("user_register"))
+        #     return redirect(url_for("login"))        
 
 
 if __name__ == "__main__":
