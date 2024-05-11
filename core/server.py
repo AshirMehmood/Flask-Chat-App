@@ -24,6 +24,8 @@ from models import app, db
 import sqlalchemy as s
 from urllib.parse import urlsplit
 from forms import LoginForm, RegistrationForm
+import requests
+from gen_link import gen_link
 
 
 
@@ -43,6 +45,9 @@ session = db.session
 
 @app.route("/")
 def home():
+    """
+    Default view
+    """
     return render_template("base.html")
 
 
@@ -57,6 +62,9 @@ def load_user(user_id):
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
+    """
+    Login view
+    """
     # if current_user.is_authenticaed:
     #     return redirect(url_for("dashboard"))
     form = LoginForm()
@@ -70,12 +78,12 @@ def login():
             s.select(orm.User).where(orm.User.username == form.username.data)
 
         )
-        # checks if the query was succesfull and checks the loaded columns password hash
+        # checks if the query was succesfull and checks the loaded column's password hash
         # with input password, if they match, means user is valid, creds are matching
         if user is None or not user.check_password(form.password.data):
             flash("Invalid username or password")
             return redirect(url_for("login"))
-        login_user(user, remember=form.remember_me.data) 
+        login_user(user, remember=form.remember_me.data)
         next_page = request.args.get("next")
         if not next_page or urlsplit(next_page).netloc != "":
             next_page = url_for("home")
@@ -89,7 +97,7 @@ def login():
         # if user:
         #     password = orm.User.query.filter_by(password=password_check).first()
 
-        # if user exists, fetch the password hash in the same row as the  
+        # if user exists, fetch the password hash in the same row as the
         # username, pass that hash to check password method along with
         # the entered password during login, if check_password() returns
         # true, login the user
@@ -103,6 +111,9 @@ def login():
 @app.route("/logout")
 @login_required
 def logout():
+    """
+    Logout view
+    """
     logout_user()
     return redirect(url_for("home"))
 
@@ -110,14 +121,20 @@ def logout():
 @app.route("/dashboard", methods=["GET"])
 @login_required
 def dashboard():
+    """
+    Dashboard view, is accessible after successful register/login
+    """
     return render_template("dashboard.html")
 
 
 @app.route("/register", methods=["GET", "POST"])
 def user_register():
+    """
+    register view
+    """
     form = RegistrationForm() # class's instance is mapped to form page' data now
     if current_user.is_authenticated:
-        return redirect(url_for("home"))
+        return redirect(url_for("dashboard"))
     if request.method == "GET":
         flash("Entered in the GET request")
         return render_template("register.html", form=form)
@@ -149,7 +166,60 @@ def user_register():
         #     except ConnectionAbortedError:
         #         flash("Unable to register")
         #         return redirect(url_for("user_register"))
-        #     return redirect(url_for("login"))        
+        #     return redirect(url_for("login"))     
+
+
+@app.route("/create", methods=["GET", "POST"])
+@login_required
+def create_room():
+    if request.method == "GET":
+        return render_template("create-room.html")
+    else: # some error returns 400 on POST
+        room_name = request.form["roomname"]
+        # external image server
+        flash("continuing the post req")
+        #third_party_url = "https://api.imgbb.com/1/upload?expiration=600&key=232a019e6eebdad639ac9080d8897172/" + request.form["banner"]
+        #banner_url = requests.post(third_party_url)
+        # api response in JSON, we need to parse and get url
+        banner_url = "empty"
+        # generating unique url for the room
+        domain = "http://127.0.0.1/" + gen_link()
+        new_room = orm.Room(room_name, banner_url, domain, orm.User)
+        current_user.admin_status = True
+        db.session.add(new_room)
+        db.session.commit()
+        new_room.users.insert(current_user)
+        db.session.commit()
+        return redirect(url_for("dashboard"))
+
+
+
+
+
+@app.route("/join", methods=["GET", "POST"])
+@login_required
+def join_room():
+    if request.method == "GET":
+        return render_template("join-room.html")
+    url = request.form["url"]
+    room = db.session.scalar(
+        s.select(orm.Room).where(url == orm.Room.room_name)
+    )
+    if room is not None:
+        orm.Room.users.append(current_user)
+        flash(f"successfully joined {room.room_name}")
+        return redirect(url_for("dashboard"))
+    else:
+        flash("Room does not exist !")
+        return redirect(url_for("join_room"))
+
+
+@app.route("/message_room/<detail>", methods=["GET", "POST"])
+@login_required
+def open_room(detail):
+    if request.method == "GET":
+        return render_template("message-room.html")
+
 
 
 if __name__ == "__main__":

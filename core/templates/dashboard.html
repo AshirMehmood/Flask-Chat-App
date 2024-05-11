@@ -3,7 +3,27 @@
 {% block title %}Dashboard{% endblock %}
 
 {% block content %}
-<h1>Dashboard, hi {{current_user.username}}</h1>
-<a href="{{ url_for('logout') }}">Log Out</a>
-  
+<ul>
+    <li>
+        <a href="{{ url_for('logout') }}">Log Out</a>
+    </li>   
+</ul>
+<h1>Dashboard, hi {{current_user}}</h1>
+
+<section>
+    <p>Rooms: </p>
+    <ul>
+        <li>
+            <a href="{{ url_for('create_room') }}">create</a>
+        </li> 
+        <li>
+            <a href="{{ url_for('join_room') }}">join</a>
+
+        </li>
+    </ul>
+</section>
+<section>
+    {{current_user.rooms}}
+</section>
+
 {% endblock %}
