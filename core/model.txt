@@ -1,0 +1,690 @@
+"""
+current model
+"""
+"""
+Models
+"""
+from typing import List
+import uuid
+from datetime import datetime
+from flask_login import UserMixin
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Unicode, Table
+from flask import Flask
+# from core.config import Config
+from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy.orm import DeclarativeBase
+from werkzeug.security import generate_password_hash, check_password_hash
+from flask_migrate import Migrate
+
+
+app = Flask(__name__)
+app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///memory"
+
+class Base(DeclarativeBase):
+    pass
+
+db = SQLAlchemy(app, model_class=Base)
+migrate = Migrate(app, db)
+
+def generate_uuid():
+    return str(uuid.uuid4())
+
+
+association_table = Table( # many to many users -> rooms
+    "association_table",
+    Base.metadata,
+    db.Column("left_id", ForeignKey("user.userID"), primary_key=True),
+    db.Column("right_id", ForeignKey("room.room_id"), primary_key=True),
+)
+
+
+class User(db.Model, UserMixin):
+    """
+    USER MODEL
+    """
+    __tablename__ = "user"
+    id: Mapped[str] = db.mapped_column("userID", String, primary_key=True, default=generate_uuid)
+    username = db.Column("user_name", String, unique=True, nullable=False)
+    password = db.Column("password", String, nullable=False)
+    email = db.Column("email", String, nullable=False)
+    created_rooms: Mapped[List["Room"]] = db.relationship(back_populates="creator")
+    rooms: Mapped[List["Room"]] = db.relationship(secondary=association_table, back_populates="users")
+    messages: Mapped[List["Message"]] = db.relationship(back_populates="sent_by")
+    admin_status: Mapped[bool] = db.mapped_column()
+
+   
+    def set_password(self, secret):
+        """
+        set password method, sets the password by converting it in to a hash
+        and then stores that hash in the database
+        """
+        # password hash
+        return generate_password_hash(secret)
+   
+    def check_password(self, secret):
+        """
+        check password method, checks the password validity by comparing the entered password
+        during login, with stored hash of the loaded column's password field, the column is
+        loaded in the login view function, using db.session.scalar(...)
+        """
+        return check_password_hash(self.password, secret)
+
+
+    def __init__(self, username, password, email):
+        self.username = username
+        self.password = self.set_password(password)
+        self.email = email
+
+
+    def __repr__(self):
+        return f'<User %r> {self.username}'
+
+
+class Room(db.Model):
+    """
+    ROOM MODEL
+    """
+    __tablename__ = "room"
+    room_name = db.Column("room_name", String, nullable=False)
+    room_id = db.mapped_column(String, primary_key=True)
+    room_banner = db.Column("room_banner", String, nullable=True)
+    creator_id = db.mapped_column(String, ForeignKey("user.userID")) # Many To One
+    creator = db.relationship("User", foreign_keys=[creator_id], backref="user.rooms")
+    joining_url = db.Column("joining_url", String, nullable=False)
+    users: Mapped[List[User]] = db.relationship(secondary=association_table) # Many To Many
+    messages: Mapped[List["Message"]] = db.relationship(backref="messages_in_room")
+
+
+    def __init__(self, room_name: String, room_banner: String,
+                joining_url: String, created_by: User):
+        self.room_name = room_name
+        self.room_banner = room_banner
+        self.joining_url = joining_url
+        self.created_by = created_by
+
+
+    def __repr__(self):
+        return '<User %r>' % self.room_name
+
+
+class Message(db.Model):
+    """
+    MESSAGE MODEL
+    """
+    __tablename__ = "message"
+    message_id: Mapped[int] = mapped_column("message_id", Integer, primary_key=True, autoincrement=True)
+    message_body = db.Column("message_body", String)
+    # message_body can contain image, gif or sound clip, video, stickers -> BLOB (binary large object)
+    sent_to_room_id = db.mapped_column(String, ForeignKey("room.room_id"), back_populates="messages") # Many To One
+    sent_to_room = db.relationship("Room", foreign_keys=[sent_to_room_id])
+    sent_id: Mapped[str] = db.mapped_column(ForeignKey("user.userID"))
+    sent_by: Mapped["User"] = relationship(back_populates="messages")
+    date = db.Column(DateTime(), default=datetime.now)
+
+
+    def __init__(self, message_body: String, sent_by: User, sent_to_room: Room):
+        self.message_body = message_body
+        self.sent_to_room = sent_to_room
+        self.sent_by = sent_by
+
+
+    def __repr__(self):
+        return '<User %r>' % self.message_body
+
+
+# This context manager is used here to initialize the database if it does not exist in the first place
+with app.app_context():
+    db.create_all()
+    user = User(username=f"daisy {generate_uuid()}", password="password", email="example@example.com")
+    db.session.add(user)
+    db.session.commit()
+    print("database initialized")
+
+
+
+-----------------------------------------------------------------------------
+
+
+"""
+Models
+room to user table: bidirectional nullable one to many
+user to message table: bidirectional one to one
+room to message table: bidirectional one to many
+"""
+import uuid
+from datetime import datetime
+from flask_login import UserMixin
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Unicode
+from flask import Flask
+# from core.config import Config
+from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy.orm import DeclarativeBase
+from werkzeug.security import generate_password_hash, check_password_hash
+from typing import Optional
+
+
+app = Flask(__name__)
+app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///memory"
+
+class Base(DeclarativeBase):
+    pass
+
+db = SQLAlchemy(app, model_class=Base)
+
+
+def generate_uuid():
+    return str(uuid.uuid4())
+
+
+
+class User(db.Model, UserMixin):
+    """
+    USER MODEL
+    """
+    __tablename__ = "user"
+    id = db.Column("userID", String, primary_key=True, default=generate_uuid)
+    username = db.Column("user_name", String, unique=True, nullable=False)
+    password = db.Column("password", String, nullable=False)
+    email = db.Column("email", String, nullable=False)
+    created_rooms: Mapped[list["Room"]] = relationship(back_populates="created_by")
+    room_id: Mapped[Optional[str]] = mapped_column(ForeignKey("room.room_id"))
+    rooms: Mapped[Optional[list["Room"]]] = relationship(back_populates="users")
+    messages: Mapped[list["Message"]] = relationship(back_populates="sent_by")
+
+   
+    def set_password(self, secret):
+        """
+        set password method, sets the password by converting it in to a hash
+        and then stores that hash in the database
+        """
+        # password hash
+        return generate_password_hash(secret)
+   
+    def check_password(self, secret):
+        """
+        check password method, checks the password validity by comparing the entered password
+        during login, with stored hash of the loaded column's password field, the column is
+        loaded in the login view function, using db.session.scalar(...)
+        """
+        return check_password_hash(self.password, secret)
+
+
+    def __init__(self, username, password, email):
+        self.username = username
+        self.password = self.set_password(password)
+        self.email = email
+
+
+    def __repr__(self):
+        return '<User %r>' % self.username
+
+
+class Room(db.Model):
+    """
+    ROOM MODEL
+    """
+    __tablename__ = "room"
+    room_name = db.Column("room_name", String, nullable=False)
+    room_id: Mapped[str] = mapped_column(primary_key=True)
+    room_banner = db.Column("room_banner", String, nullable=True)
+    created_by:  Mapped["User"] = relationship(back_populates="created_rooms") # Many To One
+    joining_url = db.Column("joining_url", String, nullable=False)
+    messages: Mapped[list["Message"]] = relationship(back_populates="sent_to_room")
+    users: Mapped[list["User"]] = relationship(back_populates="rooms") # Many To Many
+
+
+    def __init__(self, room_name: String, room_banner: String,
+                joining_url: String, created_by: User):
+        self.room_name = room_name
+        self.room_banner = room_banner
+        self.joining_url = joining_url
+        self.created_by = created_by
+
+
+    def __repr__(self):
+        return '<User %r>' % self.joining_url
+
+
+class Message(db.Model):
+    """
+    MESSAGE MODEL
+    """
+    __tablename__ = "message"
+    message_id = db.Column("message_id", Integer, ForeignKey("user.userID"), ForeignKey("room.room_id"), primary_key=True, autoincrement=True)
+    message_body = db.Column("message_body", String)
+    # message_body can contain image, gif or sound clip, video, stickers -> BLOB (binary large object)
+    sent_to_room: Mapped["Room"] = relationship(back_populates="messages") # Many To One
+    sent_by: Mapped["User"] = relationship(back_populates="messages")
+    date = db.Column(DateTime(), default=datetime.now)
+
+
+    def __init__(self, message_body: String, sent_by: User, sent_to_room: Room):
+        self.message_body = message_body
+        self.sent_to_room = sent_to_room
+        self.sent_by = sent_by
+
+
+    def __repr__(self):
+        return '<User %r>' % self.message_body
+
+
+# This context manager is used here to initialize the database if it does not exist in the first place
+with app.app_context():
+    db.create_all()
+    user = User(username="daisy S", password="password", email="example@example.com")
+    db.session.add(user)
+    db.session.commit()
+    print("database initialized")
+
+
+
+###
+
+"""
+Models
+"""
+import uuid
+from datetime import datetime
+from flask_login import UserMixin
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Unicode
+from flask import Flask
+# from core.config import Config
+from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy.orm import DeclarativeBase
+from werkzeug.security import generate_password_hash, check_password_hash
+
+
+app = Flask(__name__)
+app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///memory"
+
+class Base(DeclarativeBase):
+    pass
+
+db = SQLAlchemy(app, model_class=Base)
+
+
+def generate_uuid():
+    return str(uuid.uuid4())
+
+
+
+class User(db.Model, UserMixin):
+    """
+    USER MODEL
+    """
+    __tablename__ = "user"
+    id = db.Column("id", primary_key=True, default=generate_uuid)
+    username = db.Column("user_name", String, unique=True, nullable=False)
+    password = db.Column("password", String, nullable=False)
+    email = db.Column("email", String, nullable=False)
+    created_rooms: Mapped[list["Room"]] = relationship(back_populates="created_by")
+    rooms: Mapped[list["Room"]] = relationship(back_populates="users", overlaps="created_rooms")
+    messages: Mapped[list["Message"]] = relationship(back_populates="sent_by")
+
+   
+    def set_password(self, secret):
+        """
+        set password method, sets the password by converting it in to a hash
+        and then stores that hash in the database
+        """
+        # password hash
+        return generate_password_hash(secret)
+   
+    def check_password(self, secret):
+        """
+        check password method, checks the password validity by comparing the entered password
+        during login, with stored hash of the loaded column's password field, the column is
+        loaded in the login view function, using db.session.scalar(...)
+        """
+        return check_password_hash(self.password, secret)
+
+
+    def __init__(self, username, password, email):
+        self.username = username
+        self.password = self.set_password(password)
+        self.email = email
+
+
+    def __repr__(self):
+        return '<User %r>' % self.username
+
+
+class Room(db.Model):
+    """
+    ROOM MODEL
+    """
+    __tablename__ = "room"
+    room_name = db.Column("room_name", String, nullable=False)
+    room_id: Mapped[str] = mapped_column("room_id", primary_key=True, default=generate_uuid)
+    room_banner = db.Column("room_banner", String, nullable=True)
+    created_by:  Mapped["User"] = relationship(back_populates="created_rooms", overlaps="rooms") # Many To One
+    joining_url = db.Column("joining_url", String, nullable=False)
+    messages: Mapped[list["Message"]] = relationship(back_populates="sent_to_room")
+    user_id: Mapped[str] = mapped_column(ForeignKey("user.id"))
+    users: Mapped[list["User"]] = relationship(back_populates="rooms", overlaps="created_by,created_rooms") # Many To Many
+
+
+    def __init__(self, room_name: String, room_banner: String,
+                joining_url: String, created_by: User):
+        self.room_name = room_name
+        self.room_banner = room_banner
+        self.joining_url = joining_url
+        self.created_by = created_by
+
+
+    def __repr__(self):
+        return '<User %r>' % self.joining_url
+
+
+class Message(db.Model):
+    """
+    MESSAGE MODEL
+    """
+    __tablename__ = "message"
+    message_id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("user.id"))
+    room_id: Mapped[str] = mapped_column(ForeignKey("room.room_id"))
+    message_body = db.Column("message_body", String)
+    # message_body can contain image, gif or sound clip, video, stickers -> BLOB (binary large object)
+    sent_to_room: Mapped["Room"] = relationship(back_populates="messages") # Many To One
+    sent_by: Mapped["User"] = relationship(back_populates="messages")
+    date = db.Column(DateTime(), default=datetime.now)
+
+
+    def __init__(self, message_body: String, sent_by: User, sent_to_room: Room):
+        self.message_body = message_body
+        self.sent_to_room = sent_to_room
+        self.sent_by = sent_by
+
+
+    def __repr__(self):
+        return '<User %r>' % self.message_body
+
+
+# This context manager is used here to initialize the database if it does not exist in the first place
+with app.app_context():
+    db.create_all()
+    user = User(username="daisy hahaha", password="password", email="example@example.com")
+    db.session.add(user)
+    db.session.commit()
+    print("database initialized")
+
+
+###
+
+"""
+Models
+"""
+import uuid
+from datetime import datetime
+from flask_login import UserMixin
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Unicode, Table
+from flask import Flask
+# from core.config import Config
+from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy.orm import DeclarativeBase
+from werkzeug.security import generate_password_hash, check_password_hash
+
+
+app = Flask(__name__)
+app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///memory"
+
+class Base(DeclarativeBase):
+    pass
+
+db = SQLAlchemy(app, model_class=Base)
+
+
+def generate_uuid():
+    return str(uuid.uuid4())
+
+
+users_in_room = Table("users_in_room",
+                      Base.metadata,
+                      Column("user_id", String, ForeignKey("user.userID")),
+                      Column("room_id", String, ForeignKey("room.room_id")))
+
+
+class User(db.Model, UserMixin):
+    """
+    USER MODEL
+    """
+    __tablename__ = "user"
+    id = db.Column("userID", String, primary_key=True, default=generate_uuid)
+    username = db.Column("user_name", String, unique=True, nullable=False)
+    password = db.Column("password", String, nullable=False)
+    email = db.Column("email", String, nullable=False)
+    created_rooms = relationship("Room", backref="created_by")
+    rooms = relationship("Room", backref="users", secondary=users_in_room)
+    messages: Mapped[list["Message"]] = relationship(backref="sent_by")
+
+   
+    def set_password(self, secret):
+        """
+        set password method, sets the password by converting it in to a hash
+        and then stores that hash in the database
+        """
+        # password hash
+        return generate_password_hash(secret)
+   
+    def check_password(self, secret):
+        """
+        check password method, checks the password validity by comparing the entered password
+        during login, with stored hash of the loaded column's password field, the column is
+        loaded in the login view function, using db.session.scalar(...)
+        """
+        return check_password_hash(self.password, secret)
+
+
+    def __init__(self, username, password, email):
+        self.username = username
+        self.password = self.set_password(password)
+        self.email = email
+
+
+    def __repr__(self):
+        return '<User %r>' % self.username
+
+
+class Room(db.Model):
+    """
+    ROOM MODEL
+    """
+    __tablename__ = "room"
+    room_name = db.Column("room_name", String, nullable=False)
+    room_id = db.Column("room_id", primary_key=True, default=generate_uuid)
+    room_banner = db.Column("room_banner", String, nullable=True)
+    created_rooms = Column(String, ForeignKey("user.userID"))
+    joining_url = db.Column("joining_url", String, nullable=False)
+    messages: Mapped[list["Message"]] = relationship(backref="sent_to_room")
+    users = relationship(backref="rooms", secondary=users_in_room) # Many To Many
+
+
+    def __init__(self, room_name: String, room_banner: String,
+                joining_url: String, created_by: User):
+        self.room_name = room_name
+        self.room_banner = room_banner
+        self.joining_url = joining_url
+        self.created_by = created_by
+
+
+    def __repr__(self):
+        return '<User %r>' % self.joining_url
+
+
+class Message(db.Model):
+    """
+    MESSAGE MODEL
+    """
+    __tablename__ = "message"
+    message_id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("user.id"))
+    room_id: Mapped[str] = mapped_column(ForeignKey("room.room_id"))
+    message_body = db.Column("message_body", String)
+    # message_body can contain image, gif or sound clip, video, stickers -> BLOB (binary large object)
+    sent_to_room: Mapped["Room"] = relationship(back_populates="messages") # Many To One
+    sent_by: Mapped["User"] = relationship(back_populates="messages")
+    date = db.Column(DateTime(), default=datetime.now)
+
+
+    def __init__(self, message_body: String, sent_by: User, sent_to_room: Room):
+        self.message_body = message_body
+        self.sent_to_room = sent_to_room
+        self.sent_by = sent_by
+
+
+    def __repr__(self):
+        return '<User %r>' % self.message_body
+
+
+# This context manager is used here to initialize the database if it does not exist in the first place
+with app.app_context():
+    db.create_all()
+    user = User(username="daisy hahaha", password="password", email="example@example.com")
+    db.session.add(user)
+    db.session.commit()
+    print("database initialized")
+
+
+-----------------------------------------
+
+"""
+Models
+"""
+from typing import List
+import uuid
+from datetime import datetime
+from flask_login import UserMixin
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Unicode, Table
+from flask import Flask
+# from core.config import Config
+from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy.orm import DeclarativeBase
+from werkzeug.security import generate_password_hash, check_password_hash
+from flask_migrate import Migrate
+
+
+app = Flask(__name__)
+app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///memory"
+
+class Base(DeclarativeBase):
+    pass
+
+db = SQLAlchemy(app, model_class=Base)
+migrate = Migrate(app, db)
+
+def generate_uuid():
+    return str(uuid.uuid4())
+
+
+association_table = Table( # many to many users -> rooms
+    "association_table",
+    Base.metadata,
+    db.Column("left_id", ForeignKey("user.userID"), primary_key=True),
+    db.Column("right_id", ForeignKey("room.room_id"), primary_key=True),
+)
+
+
+class User(db.Model, UserMixin):
+    """
+    USER MODEL
+    """
+    __tablename__ = "user"
+    id: Mapped[str] = db.mapped_column("userID", String, primary_key=True, default=generate_uuid)
+    username = db.Column("user_name", String, unique=True, nullable=False)
+    password = db.Column("password", String, nullable=False)
+    email = db.Column("email", String, nullable=False)
+    created_rooms: Mapped[List["Room"]] = db.relationship(back_populates="creator")
+    rooms: Mapped[List["Room"]] = db.relationship(secondary=association_table, back_populates="users")
+    messages: Mapped[List["Message"]] = db.relationship(back_populates="sent_by")
+
+   
+    def set_password(self, secret):
+        """
+        set password method, sets the password by converting it in to a hash
+        and then stores that hash in the database
+        """
+        # password hash
+        return generate_password_hash(secret)
+   
+    def check_password(self, secret):
+        """
+        check password method, checks the password validity by comparing the entered password
+        during login, with stored hash of the loaded column's password field, the column is
+        loaded in the login view function, using db.session.scalar(...)
+        """
+        return check_password_hash(self.password, secret)
+
+
+    def __init__(self, username, password, email):
+        self.username = username
+        self.password = self.set_password(password)
+        self.email = email
+
+
+    def __repr__(self):
+        return f'<User %r> {self.username}'
+
+
+class Room(db.Model):
+    """
+    ROOM MODEL
+    """
+    __tablename__ = "room"
+    room_name = db.Column("room_name", String, nullable=False)
+    room_id: Mapped[str] = db.mapped_column(primary_key=True)
+    room_banner = db.Column("room_banner", String, nullable=True)
+    creator_id: Mapped[str] = db.mapped_column(ForeignKey("user.userID")) # Many To One
+    creator: Mapped["User"]  = db.relationship(backref="created_rooms")
+    joining_url = db.Column("joining_url", String, nullable=False)
+    users: Mapped[List[User]] = db.relationship(secondary=association_table, back_populates="rooms") # Many To Many
+    messages: Mapped["Message"] = db.relationship(backref="messages_in_room")
+
+
+    def __init__(self, room_name: String, room_banner: String,
+                joining_url: String, created_by: User):
+        self.room_name = room_name
+        self.room_banner = room_banner
+        self.joining_url = joining_url
+        self.created_by = created_by
+
+
+    def __repr__(self):
+        return '<User %r>' % self.room_name
+
+
+class Message(db.Model):
+    """
+    MESSAGE MODEL
+    """
+    __tablename__ = "message"
+    message_id: Mapped[int] = mapped_column("message_id", Integer, ForeignKey("user.userID"), ForeignKey("room.room_id"), primary_key=True, autoincrement=True)
+    message_body = db.Column("message_body", String)
+    # message_body can contain image, gif or sound clip, video, stickers -> BLOB (binary large object)
+    sent_to_room: Mapped["Room"] = relationship(back_populates="messages") # Many To One
+    sent_by: Mapped["User"] = relationship(back_populates="messages")
+    date = db.Column(DateTime(), default=datetime.now)
+
+
+    def __init__(self, message_body: String, sent_by: User, sent_to_room: Room):
+        self.message_body = message_body
+        self.sent_to_room = sent_to_room
+        self.sent_by = sent_by
+
+
+    def __repr__(self):
+        return '<User %r>' % self.message_body
+
+
+# This context manager is used here to initialize the database if it does not exist in the first place
+with app.app_context():
+    db.create_all()
+    user = User(username=f"daisy {generate_uuid()}", password="password", email="example@example.com")
+    db.session.add(user)
+    db.session.commit()
+    print("database initialized")
